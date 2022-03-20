@@ -1,0 +1,22 @@
+Description:
+  This template deploys a S3 logging bucket which will receive AccessLogs
+  from a bucket in another account via S3 replication
+Parameters:
+  EnvironmentName:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+    Default: Consumer
+
+Resources:
+  LoggingBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+
+Outputs:
+  LoggingBucketArn:
+    Description: Arn of bucket to be used
+    Value: !GetAtt LoggingBucket.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-BucketArn"

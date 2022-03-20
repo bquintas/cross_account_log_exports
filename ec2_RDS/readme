@@ -1,0 +1,1 @@
+Sample VPC deploying Posgresql with CW logging that can be used in a subscription also example of cwagent uploading logs from Ec2 instance

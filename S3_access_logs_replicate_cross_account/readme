@@ -1,0 +1,8 @@
+Execute Step1 in the account that will receive the logs replicated
+This will only create a S3 bucket with versioning enabled pass the bucket arn and the AWS Account Id to the account that generates access logs (sender)
+
+Run Step2 in Access Logs Sending Account (requires bucket Arn and account id from Step1) 
+and copy the Role Arn used to by S3 to replicate files, pass it to Step3 
+
+Run Step3 again in the Receiver Account , passing the role Arn from Step2 as parameter
+

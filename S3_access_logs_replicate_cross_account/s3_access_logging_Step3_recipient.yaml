@@ -1,0 +1,66 @@
+Description:
+  This template deploys the required permissions for a bucket which will receive AccessLogs
+  from a bucket in another account via S3 replication, requires the role arn from the sender account
+Parameters:
+  EnvironmentName:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+    Default: Consumer
+
+  SenderAccountRoleArn:
+    Description: The role arn used by the sender account to replicate to this account bucket
+    Type: String
+
+  S3StackName:
+    Description: Name of an active CloudFormation stack that contains the S3 bucket that will be used in this stack.
+    Type: String
+    MinLength: 1
+    MaxLength: 255
+    AllowedPattern: ^[a-zA-Z][-a-zA-Z0-9]*$
+    Default: "s3accesslogrecipient"
+
+Resources:
+  LoggingBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        !Select [
+          5,
+          !Split [":", Fn::ImportValue: !Sub "${S3StackName}-BucketArn"],
+        ]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub ${SenderAccountRoleArn}
+            Action:
+              - s3:ReplicateObject
+              - s3:ReplicateDelete
+            Resource:
+              !Join [
+                "",
+                [Fn::ImportValue: !Sub "${S3StackName}-BucketArn", "/*"],
+              ]
+          - Effect: Allow
+            Principal:
+              AWS: !Sub
+                - ${OtherAccountId}
+                - OtherAccountId:
+                    !Select [4, !Split [":", !Ref SenderAccountRoleArn]]
+            Action:
+              - s3:ObjectOwnerOverrideToBucketOwner
+            Resource:
+              !Join [
+                "",
+                [Fn::ImportValue: !Sub "${S3StackName}-BucketArn", "/*"],
+              ]
+          - Effect: Allow
+            Principal:
+              AWS: !Sub ${SenderAccountRoleArn}
+            Action:
+              - s3:List*
+              - s3:GetBucketVersioning
+              - s3:PutBucketVersioning
+            Resource:
+              Fn::ImportValue: !Sub "${S3StackName}-BucketArn"

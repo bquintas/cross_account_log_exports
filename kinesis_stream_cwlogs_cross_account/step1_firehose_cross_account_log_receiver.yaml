@@ -1,0 +1,128 @@
+Description:
+  This template deploys a S3 bucket, Kinesis firehose delivery stream to that bucket and
+  creates a Cwlogs destination to be used by another account passed in the parameter
+  Requires ACCOUNT ID of the Sending Account
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+    Default: KinesisReceiver
+
+  ProviderAccount:
+    Description: The ID of the account allowed to send logs
+    Type: String
+
+Resources:
+  ###Create an Amazon S3 bucket###
+
+  KinesisBucket:
+    Type: AWS::S3::Bucket
+  ###Create the IAM role that grants Kinesis Data Firehose permission to put data into the bucket###
+
+  FirehosetoS3Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - firehose.amazonaws.com
+            Action:
+              - sts:AssumeRole
+            Condition:
+              StringEquals:
+                "sts:ExternalId": !Sub ${AWS::AccountId}
+      Path: /
+  PermissionsforFirehosetoS3Role:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:AbortMultipartUpload
+              - s3:GetBucketLocation
+              - s3:GetObject
+              - s3:ListBucket
+              - s3:ListBucketMultipartUploads
+              - s3:PutObject
+            Resource:
+              - !GetAtt KinesisBucket.Arn
+              - !Join ["", [!GetAtt KinesisBucket.Arn, "/*"]]
+      PolicyName: firehosetos3permissions
+      Roles:
+        - !Ref FirehosetoS3Role
+  ###create the Kinesis Data Firehose delivery stream###
+
+  kinesisStreamToS3:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      S3DestinationConfiguration:
+        BucketARN: !GetAtt KinesisBucket.Arn
+        RoleARN: !GetAtt FirehosetoS3Role.Arn
+
+  ###create the IAM role that grants CloudWatch Logs the permission to put data into your Kinesis Data Firehose stream###
+
+  CWLtoKinesisRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - logs.eu-west-1.amazonaws.com
+            Action:
+              - sts:AssumeRole
+            Condition:
+              StringLike:
+                "aws:SourceArn":
+                  - !Sub "arn:aws:logs:${AWS::Region}:${ProviderAccount}:*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+      Path: /
+  ###Create a permissions policy to define which actions CloudWatch Logs can perform on your account###
+
+  PermissionsforCWL:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - firehose:*
+            Resource:
+              - !Sub "arn:aws:firehose:${AWS::Region}:${AWS::AccountId}:*"
+      PolicyName: cwltokinesispermissions
+      Roles:
+        - !Ref CWLtoKinesisRole
+  ###create the CloudWatch Logs destination###
+
+  CWLogsDestination:
+    Type: AWS::Logs::Destination
+    Properties:
+      DestinationName: FirehoseDestination
+      DestinationPolicy: !Sub |
+        {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Effect": "Allow",
+            "Principal": {
+              "AWS": "${ProviderAccount}"
+            },
+            "Action": "logs:PutSubscriptionFilter",
+            "Resource": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:destination:FirehoseDestination"
+          }]
+        }
+      RoleArn: !GetAtt CWLtoKinesisRole.Arn
+      TargetArn: !GetAtt kinesisStreamToS3.Arn
+
+Outputs:
+  CWLogsDestination:
+    Description: Arn of the CWLogs destination
+    Value: !GetAtt CWLogsDestination.Arn

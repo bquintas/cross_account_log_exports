@@ -1,0 +1,4 @@
+Run Step 1 to create bucket and delivery stream in the recipient account - Requires the Account Id of the sender
+it will generate a cloudwatch logs destination arn to be used in the sender account
+
+Run Step2 using the CWLogs destination arn and pass a CWlogs group name to subscribe and send logs to destination.

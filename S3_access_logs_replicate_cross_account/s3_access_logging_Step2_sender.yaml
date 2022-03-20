@@ -1,0 +1,107 @@
+Description: This template creates 2 buckets and configures access logs from one of them to be saved to the other
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+    Default: Provider
+
+  DestinationAccountForReplication:
+    Description: The account id where you want to replicate access logs to
+    Type: String
+
+  DestinationBucketForReplication:
+    Description: The Bucket arn in the destination account
+    Type: String
+
+Resources:
+  providerdatabucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      LoggingConfiguration:
+        DestinationBucketName: !Ref LoggingBucket
+        LogFilePrefix: access-logs
+
+  LoggingBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+      ReplicationConfiguration:
+        Role: !GetAtt S3ReplicationRole.Arn
+        Rules:
+          - Destination:
+              AccessControlTranslation:
+                Owner: Destination
+              Account: !Ref DestinationAccountForReplication
+              Bucket: !Ref DestinationBucketForReplication
+            Status: Enabled
+
+  LoggingBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref LoggingBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Action:
+              - s3:PutObject
+            Resource: !Sub "${LoggingBucket.Arn}/access-logs*"
+            Condition:
+              ArnLike:
+                "aws:SourceArn": !GetAtt providerdatabucket.Arn
+              StringEquals:
+                "aws:SourceAccount": !Sub ${AWS::AccountId}
+
+  S3ReplicationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - s3.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+  S3ReplicationPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - "s3:ListBucket"
+              - "s3:GetReplicationConfiguration"
+              - "s3:GetObjectVersionForReplication"
+              - "s3:GetObjectVersionAcl"
+              - "s3:GetObjectVersionTagging"
+              - "s3:GetObjectRetention"
+              - "s3:GetObjectLegalHold"
+            Resource:
+              - !Join ["", [!GetAtt LoggingBucket.Arn, "/*"]]
+              - !GetAtt LoggingBucket.Arn
+              - !Ref DestinationBucketForReplication
+              - !Join ["", [!Ref DestinationBucketForReplication, "/*"]]
+          - Effect: Allow
+            Action:
+              - "s3:ReplicateObject"
+              - "s3:ReplicateDelete"
+              - "s3:ReplicateTags"
+              - "s3:ObjectOwnerOverrideToBucketOwner"
+            Resource:
+              - !Join ["", [!Ref DestinationBucketForReplication, "/*"]]
+              - !Join ["", [!GetAtt LoggingBucket.Arn, "/*"]]
+      PolicyName: S3replicationpolicy
+      Roles:
+        - !Ref S3ReplicationRole
+
+Outputs:
+  ReplicationRoleArn:
+    Description: Arn of the role used by replication
+    Value: !GetAtt S3ReplicationRole.Arn
