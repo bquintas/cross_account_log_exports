@@ -2,3 +2,7 @@ Run Step 1 to create bucket and delivery stream in the recipient account - Requi
 it will generate a cloudwatch logs destination arn to be used in the sender account
 
 Run Step2 using the CWLogs destination arn and pass a CWlogs group name to subscribe and send logs to destination.
+
+
+TODO:Logs will go from CWlogs in account A to S3 in account B base64 encoded and compressed - they can be processed
+before S3 by using an extendedS3destination firehose stream calling a lambda to decode/uncompress (There's a Lambda that can be used from the Lambda blueprints)
