@@ -1,0 +1,98 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  SendingAccountId:
+    Type: String
+  kmskeydescription:
+    Type: String
+    Default: "key used to encrypt guardduty exported findings from sending account"
+Resources:
+  s3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "guarddutysenderlogs-${AWS::AccountId}-${AWS::Region}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: "aws:kms"
+              KMSMasterKeyID: !GetAtt guarddutykmskey.Arn
+            BucketKeyEnabled: true
+
+  s3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Sub "guarddutysenderlogs-${AWS::AccountId}-${AWS::Region}"
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: guardduty.amazonaws.com
+            Action: s3:GetBucketLocation
+            Resource: !GetAtt s3Bucket.Arn
+            Condition:
+              StringEquals:
+                "aws:SourceAccount":
+                  - !Sub ${SendingAccountId}
+          - Effect: Allow
+            Principal:
+              Service: guardduty.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Join
+              - ""
+              - - !GetAtt s3Bucket.Arn
+                - "/*"
+            Condition:
+              StringEquals:
+                "aws:SourceAccount":
+                  - !Sub ${SendingAccountId}
+
+  guarddutykmskey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Ref kmskeydescription
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: Enable Key Management from own account
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: kms:*
+            Resource: "*"
+          - Sid: Grant Access To Guardduty from Sending Account
+            Effect: Allow
+            Principal:
+              Service: guardduty.amazonaws.com
+            Action: kms:GenerateDataKey
+            Resource: "*"
+            # NOTE Ideally the policy allowing GuardDuty from the sending account should be like the bellow statement, to avoid having to use a custom resource (to break circular dependency)
+            # I'm allowing initial * and then changing it with another template or in the console to add the bellow
+            # !Join
+            #   - ""
+            #   - - "arn:aws:kms:"
+            #     - !Ref "AWS::Region"
+            #     - ":"
+            #     - !Ref "AWS::AccountId"
+            #     - ":"
+            #     - ":key/"
+            #     - !Ref guarddutykmskey
+            Condition:
+              StringEquals:
+                "aws:SourceAccount":
+                  - !Ref SendingAccountId
+            #Can be further narrowed down in scope using aws::sourcearn  "arn:aws:guardduty:Region:SendingAccountId:detector/SourceDetectorID"
+Outputs:
+  S3BucketArn:
+    Description: S3 bucket Arn to be configured by guardduty sending account
+    Value: !GetAtt s3Bucket.Arn
+  KmsKeyArn:
+    Description: KMS Key Arn to be used by sending account
+    Value: !Join
+      - ""
+      - - "arn:aws:kms:"
+        - !Ref "AWS::Region"
+        - ":"
+        - !Ref "AWS::AccountId"
+        - ":key/"
+        - !Ref guarddutykmskey
