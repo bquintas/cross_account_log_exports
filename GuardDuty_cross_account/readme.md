@@ -1,0 +1,3 @@
+This template sets up a S3 bucket with KMS encryption in a "receiver" account to receive GuardDuty logs exported from another account - Doesn't need to be in the same AWS Organization
+The template requires the AWS Account Id of the sending account and Outputs the S3 bucket arn and KMS Key arn that should be provided to the sender account to configure 
+the export to S3 section of GuardDuty settings  - assumes findings are already in place.
