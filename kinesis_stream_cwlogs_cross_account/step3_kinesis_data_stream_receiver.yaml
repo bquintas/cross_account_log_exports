@@ -1,0 +1,91 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+
+Description:
+  This template deploys a S3 bucket, Kinesis data stream to that bucket and
+  creates a Cwlogs destination to be used by another account passed in the parameter
+  Requires ACCOUNT ID of the Sending Account
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+    Default: KinesisDataStreamReceiver
+
+  ProviderAccount:
+    Description: The ID of the account allowed to send logs
+    Type: String
+    Default: "592129395568"
+Resources:
+  ###Create an Amazon S3 bucket###
+
+  KinesisDataStreamBucket:
+    Type: AWS::S3::Bucket
+
+  ###create kds stream##
+  KinesisDataStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      ShardCount: 1
+
+  ###Create the IAM role that grants Kinesis Data Firehose permission to put data into the bucket###
+
+  CWLtoKinesisDataStreamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - logs.eu-west-1.amazonaws.com
+            Action:
+              - sts:AssumeRole
+            Condition:
+              StringLike:
+                "aws:SourceArn":
+                  - !Sub "arn:aws:logs:${AWS::Region}:${ProviderAccount}:*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+      Path: /
+  ###Create a permissions policy to define which actions CloudWatch Logs can perform on your account###
+
+  PermissionsforCWL:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - kinesis:PutRecord
+            Resource:
+              - !GetAtt KinesisDataStream.Arn
+      PolicyName: cwltokinesisdatastreampermissions
+      Roles:
+        - !Ref CWLtoKinesisDataStreamRole
+
+  ###create the CloudWatch Logs destination###
+
+  CWLogsDestination:
+    Type: AWS::Logs::Destination
+    Properties:
+      DestinationName: KDSDestination
+      DestinationPolicy: !Sub |
+        {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Effect": "Allow",
+            "Principal": {
+              "AWS": "${ProviderAccount}"
+            },
+            "Action": "logs:PutSubscriptionFilter",
+            "Resource": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:destination:KDSDestination"
+          }]
+        }
+      RoleArn: !GetAtt CWLtoKinesisDataStreamRole.Arn
+      TargetArn: !GetAtt KinesisDataStream.Arn
+Outputs:
+  CWLogsDestination:
+    Description: Arn of the CWLogs destination
+    Value: !GetAtt CWLogsDestination.Arn

@@ -1,0 +1,23 @@
+Description: This template deploys a subscription filter that can be used to push logs to recipient account
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+    Default: Consumer
+
+  CWLogsDestination:
+    Description: The arn of CWLogs destination in the receiving account
+    Type: String
+
+  CWLogGroupName:
+    Description: The name of log groups in this account CW to associate with the subscription filter
+    Type: String
+
+Resources:
+  CWLogsSubscriptionFilter:
+    Type: AWS::Logs::SubscriptionFilter
+    Properties:
+      DestinationArn: !Ref CWLogsDestination
+      FilterPattern: " "
+      LogGroupName: !Ref CWLogGroupName
